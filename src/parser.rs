@@ -57,9 +57,15 @@ impl Content {
 /// Raw message as it appears in the export JSON.
 #[derive(Debug, Deserialize)]
 struct RawMessage {
-    #[serde(alias = "role")]
+    /// Accepts "role" (API format) or "sender" (Claude web export)
+    #[serde(alias = "sender")]
     role: String,
-    content: Content,
+    /// Structured content — string or array of blocks
+    #[serde(default)]
+    content: Option<Content>,
+    /// Plain-text fallback used in Claude web exports
+    #[serde(default)]
+    text: Option<String>,
 }
 
 impl RawMessage {
@@ -71,15 +77,20 @@ impl RawMessage {
             "system" => "system".to_string(),
             other => other.to_string(),
         };
-        Message {
-            role,
-            content: self.content.into_text(),
-        }
+        // Prefer structured content blocks; fall back to plain text field
+        let content = match (self.content, self.text) {
+            (Some(c), _) => c.into_text(),
+            (None, Some(t)) => t,
+            (None, None) => String::new(),
+        };
+        Message { role, content }
     }
 }
 
 #[derive(Debug, Deserialize)]
 struct Conversation {
+    /// Accepts "messages" (API format) or "chat_messages" (Claude web export)
+    #[serde(alias = "chat_messages")]
     messages: Vec<RawMessage>,
 }
 
