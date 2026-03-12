@@ -1,27 +1,11 @@
-use axum::{extract::Json, http::StatusCode, response::IntoResponse, routing::{get, post}, Router};
-use serde::{Deserialize, Serialize};
+use axum::extract::{DefaultBodyLimit, Multipart};
+use axum::{http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router};
+use serde::Serialize;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use std::net::SocketAddr;
 
 use crate::{counter, parser, tokenizer};
-
-#[derive(Deserialize)]
-pub struct AnalyzeRequest {
-    pub data: String,
-    #[serde(default = "default_true")]
-    pub normalize: bool,
-    #[serde(default)]
-    pub stop_words: bool,
-    #[serde(default = "default_speaker")]
-    pub speaker: String,
-    #[serde(default = "default_limit")]
-    pub limit: usize,
-}
-
-fn default_true() -> bool { true }
-fn default_speaker() -> String { "user".into() }
-fn default_limit() -> usize { 100 }
 
 #[derive(Serialize)]
 pub struct AnalyzeResponse {
@@ -39,14 +23,61 @@ pub struct WordEntry {
     pub percent: f64,
 }
 
-async fn analyze(Json(req): Json<AnalyzeRequest>) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let messages = parser::parse_json_str(&req.data)
+async fn analyze(mut multipart: Multipart) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let mut file_bytes: Option<Vec<u8>> = None;
+    let mut file_name: Option<String> = None;
+    let mut normalize = true;
+    let mut stop_words = false;
+    let mut speaker = "user".to_string();
+    let mut limit: usize = 100;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Multipart error: {e}")))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+        match name.as_str() {
+            "file" => {
+                file_name = field.file_name().map(|s| s.to_string());
+                file_bytes = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Read error: {e}")))?
+                        .to_vec(),
+                );
+            }
+            "normalize" => {
+                let v = field.text().await.unwrap_or_default();
+                normalize = v != "false";
+            }
+            "stop_words" => {
+                let v = field.text().await.unwrap_or_default();
+                stop_words = v == "true";
+            }
+            "speaker" => {
+                speaker = field.text().await.unwrap_or_else(|_| "user".into());
+            }
+            "limit" => {
+                let v = field.text().await.unwrap_or_default();
+                limit = v.parse().unwrap_or(100);
+            }
+            _ => {}
+        }
+    }
+
+    let bytes = file_bytes
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing 'file' field".into()))?;
+    let fname = file_name.unwrap_or_else(|| "upload.txt".into());
+
+    let messages = parser::parse_bytes(&fname, &bytes)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Parse error: {e}")))?;
 
-    let speaker = req.speaker.to_lowercase();
+    let speaker_lower = speaker.to_lowercase();
     let filtered: Vec<&parser::Message> = messages
         .iter()
-        .filter(|m| match speaker.as_str() {
+        .filter(|m| match speaker_lower.as_str() {
             "user" => m.role == "human",
             "assistant" => m.role == "assistant",
             _ => true,
@@ -57,14 +88,18 @@ async fn analyze(Json(req): Json<AnalyzeRequest>) -> Result<impl IntoResponse, (
 
     let mut all_tokens = Vec::new();
     for msg in &filtered {
-        all_tokens.extend(tokenizer::tokenize(&msg.content, req.normalize));
+        all_tokens.extend(tokenizer::tokenize(&msg.content, normalize));
     }
 
-    let counts = counter::count_words(all_tokens, req.stop_words);
+    let counts = counter::count_words(all_tokens, stop_words);
     let total: u32 = counts.iter().map(|w| w.count).sum();
     let total_unique = counts.len();
 
-    let display = if req.limit == 0 { &counts[..] } else { &counts[..req.limit.min(counts.len())] };
+    let display = if limit == 0 {
+        &counts[..]
+    } else {
+        &counts[..limit.min(counts.len())]
+    };
 
     let words: Vec<WordEntry> = display
         .iter()
@@ -73,7 +108,11 @@ async fn analyze(Json(req): Json<AnalyzeRequest>) -> Result<impl IntoResponse, (
             rank: i + 1,
             word: wc.word.clone(),
             count: wc.count,
-            percent: if total > 0 { (wc.count as f64 / total as f64) * 100.0 } else { 0.0 },
+            percent: if total > 0 {
+                (wc.count as f64 / total as f64) * 100.0
+            } else {
+                0.0
+            },
         })
         .collect();
 
@@ -99,6 +138,7 @@ pub async fn run(port: u16) {
         .route("/api/health", get(health))
         .route("/api/analyze", post(analyze))
         .fallback_service(ServeDir::new(&ui_path).append_index_html_on_directories(true))
+        .layer(DefaultBodyLimit::max(512 * 1024 * 1024)) // 512 MB
         .layer(CorsLayer::permissive());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));

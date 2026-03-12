@@ -31,7 +31,7 @@ body {
 }
 
 #root {
-  max-width: 1200px;
+  max-width: 1800px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -431,7 +431,64 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Split View */
+.split-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.results-section {
+  min-width: 0;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--border);
+}
+
+.split-view .results-section:first-child .section-title {
+  color: var(--accent);
+}
+
+.split-view .results-section:last-child .section-title {
+  color: var(--accent2);
+}
+
+.split-view .results-section:last-child .bar {
+  background: var(--accent2);
+}
+
+.split-view .results-section:last-child .freq-table tbody tr:hover .bar {
+  background: #46d35a;
+}
+
+.split-view .results-section:last-child .chart-bar {
+  background: linear-gradient(90deg, var(--accent2), #46d35a);
+}
+
+.split-view .results-section:last-child .stat-value {
+  color: var(--accent2);
+}
+
+.split-view .results-section:last-child .view-toggle button.active {
+  background: var(--accent2);
+}
+
+.split-view .stats {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 /* Responsive */
+@media (max-width: 1200px) {
+  .split-view {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
   .header {
     flex-direction: column;

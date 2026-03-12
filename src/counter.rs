@@ -2,9 +2,45 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 const STOP_WORDS: &[&str] = &[
-    "the", "a", "an", "is", "are", "was", "were", "i", "you", "it",
-    "in", "on", "at", "to", "of", "and", "or", "but", "for", "with",
-    "that", "this", "my", "your",
+    // Articles / determiners
+    "a", "an", "the", "this", "that", "these", "those",
+    "some", "any", "all", "each", "every", "no", "other",
+    // Pronouns
+    "i", "me", "my", "mine", "myself",
+    "you", "your", "yours", "yourself",
+    "he", "him", "his", "himself",
+    "she", "her", "hers", "herself",
+    "it", "its", "itself",
+    "we", "us", "our", "ours", "ourselves",
+    "they", "them", "their", "theirs", "themselves",
+    "what", "which", "who", "whom", "whose",
+    // Be / have / do
+    "am", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "having",
+    "do", "does", "did", "doing",
+    // Modals
+    "can", "could", "will", "would", "shall", "should",
+    "may", "might", "must",
+    // Prepositions
+    "in", "on", "at", "to", "of", "for", "with", "by",
+    "from", "into", "through", "during", "before", "after",
+    "above", "below", "between", "under", "over", "out",
+    "about", "up", "down", "off", "as", "via",
+    // Conjunctions
+    "and", "or", "but", "nor", "yet", "so", "because",
+    "if", "unless", "until", "while", "when", "where",
+    "than", "then",
+    // Common adverbs
+    "not", "no", "yes", "very", "just", "also", "only",
+    "even", "too", "much", "more", "most", "less", "least",
+    "here", "there", "now", "how", "why",
+    // Contractions (after apostrophe stripping)
+    "dont", "doesnt", "didnt", "isnt", "arent", "wasnt", "werent",
+    "wont", "wouldnt", "cant", "couldnt", "shouldnt",
+    "havent", "hasnt", "hadnt", "im", "ive", "ill",
+    "youre", "youve", "youll", "hes", "shes", "its",
+    "were", "weve", "theyre", "theyve", "theyll",
+    "thats", "whats", "lets",
 ];
 
 #[derive(Serialize)]

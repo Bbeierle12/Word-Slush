@@ -14,101 +14,26 @@ interface AnalyzeResponse {
   scoped_messages: number;
 }
 
-type Speaker = "user" | "assistant" | "both";
 type SortKey = "rank" | "word" | "count" | "percent";
 type SortDir = "asc" | "desc";
 
-export default function App() {
-  const [results, setResults] = useState<AnalyzeResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [rawJson, setRawJson] = useState<string | null>(null);
-
-  // Controls
-  const [normalize, setNormalize] = useState(true);
-  const [stopWords, setStopWords] = useState(false);
-  const [speaker, setSpeaker] = useState<Speaker>("user");
-  const [limit, setLimit] = useState(100);
-
-  // Sort
+function ResultsSection({
+  title,
+  results,
+}: {
+  title: string;
+  results: AnalyzeResponse;
+}) {
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-
-  // View
   const [view, setView] = useState<"table" | "chart">("table");
 
-  const fileRef = useRef<HTMLInputElement>(null);
-  const dropRef = useRef<HTMLDivElement>(null);
-
-  const analyze = useCallback(
-    async (data: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            data,
-            normalize,
-            stop_words: stopWords,
-            speaker,
-            limit,
-          }),
-        });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || res.statusText);
-        }
-        const json: AnalyzeResponse = await res.json();
-        setResults(json);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Unknown error");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [normalize, stopWords, speaker, limit]
-  );
-
-  const handleFile = useCallback(
-    (file: File) => {
-      setFileName(file.name);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        setRawJson(text);
-        analyze(text);
-      };
-      reader.readAsText(file);
-    },
-    [analyze]
-  );
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropRef.current?.classList.remove("drag-over");
-      const file = e.dataTransfer.files[0];
-      if (file) handleFile(file);
-    },
-    [handleFile]
-  );
-
-  const reanalyze = useCallback(() => {
-    if (rawJson) analyze(rawJson);
-  }, [rawJson, analyze]);
-
-  const sorted = results
-    ? [...results.words].sort((a, b) => {
-        let cmp = 0;
-        if (sortKey === "word") cmp = a.word.localeCompare(b.word);
-        else cmp = (a[sortKey] as number) - (b[sortKey] as number);
-        return sortDir === "desc" ? -cmp : cmp;
-      })
-    : [];
+  const sorted = [...results.words].sort((a, b) => {
+    let cmp = 0;
+    if (sortKey === "word") cmp = a.word.localeCompare(b.word);
+    else cmp = (a[sortKey] as number) - (b[sortKey] as number);
+    return sortDir === "desc" ? -cmp : cmp;
+  });
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -119,139 +44,42 @@ export default function App() {
     }
   };
 
-  const maxCount = sorted.length > 0 ? sorted[0].count : 1;
+  const maxCount = sorted.length > 0 ? Math.max(...sorted.map((w) => w.count)) : 1;
   const topForChart = sorted.slice(0, 40);
 
   return (
-    <div className="app">
-      <header className="header">
-        <h1 className="logo">
-          <span className="logo-icon">λ</span> lexis
-        </h1>
-        <span className="tagline">Word frequency analyzer for Claude exports</span>
-      </header>
+    <div className="results-section">
+      <h2 className="section-title">{title}</h2>
 
-      {/* Upload Zone */}
-      <div
-        ref={dropRef}
-        className="dropzone"
-        onDragOver={(e) => {
-          e.preventDefault();
-          dropRef.current?.classList.add("drag-over");
-        }}
-        onDragLeave={() => dropRef.current?.classList.remove("drag-over")}
-        onDrop={handleDrop}
-        onClick={() => fileRef.current?.click()}
-      >
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".json"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleFile(f);
-          }}
-        />
-        {fileName ? (
-          <div className="dropzone-loaded">
-            <span className="file-icon">📄</span>
-            <span className="file-name">{fileName}</span>
-            <span className="file-hint">click or drop to replace</span>
-          </div>
-        ) : (
-          <div className="dropzone-empty">
-            <span className="upload-icon">↑</span>
-            <span>Drop a Claude JSON export here, or click to browse</span>
-          </div>
-        )}
+      <div className="stats">
+        <div className="stat">
+          <span className="stat-value">{results.total_words.toLocaleString()}</span>
+          <span className="stat-label">total words</span>
+        </div>
+        <div className="stat">
+          <span className="stat-value">{results.total_unique.toLocaleString()}</span>
+          <span className="stat-label">unique words</span>
+        </div>
+        <div className="stat">
+          <span className="stat-value">{results.scoped_messages.toLocaleString()}</span>
+          <span className="stat-label">messages</span>
+        </div>
+        <div className="stat">
+          <span className="stat-value">{results.words.length.toLocaleString()}</span>
+          <span className="stat-label">rows shown</span>
+        </div>
       </div>
 
-      {/* Controls */}
-      <div className="controls">
-        <div className="control-group">
-          <label className="toggle-label">
-            <input
-              type="checkbox"
-              checked={normalize}
-              onChange={(e) => setNormalize(e.target.checked)}
-            />
-            <span className="toggle-text">Normalize</span>
-          </label>
-          <label className="toggle-label">
-            <input
-              type="checkbox"
-              checked={stopWords}
-              onChange={(e) => setStopWords(e.target.checked)}
-            />
-            <span className="toggle-text">Filter stop words</span>
-          </label>
-        </div>
-
-        <div className="control-group">
-          <label className="select-label">
-            Speaker
-            <select value={speaker} onChange={(e) => setSpeaker(e.target.value as Speaker)}>
-              <option value="user">User</option>
-              <option value="assistant">Assistant</option>
-              <option value="both">Both</option>
-            </select>
-          </label>
-          <label className="select-label">
-            Limit
-            <input
-              type="number"
-              min={0}
-              value={limit}
-              onChange={(e) => setLimit(parseInt(e.target.value) || 0)}
-              className="limit-input"
-            />
-          </label>
-        </div>
-
-        <button className="btn-analyze" onClick={reanalyze} disabled={!rawJson || loading}>
-          {loading ? "Analyzing..." : "Re-analyze"}
+      <div className="view-toggle">
+        <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>
+          Table
+        </button>
+        <button className={view === "chart" ? "active" : ""} onClick={() => setView("chart")}>
+          Chart
         </button>
       </div>
 
-      {error && <div className="error">{error}</div>}
-
-      {/* Stats Bar */}
-      {results && (
-        <div className="stats">
-          <div className="stat">
-            <span className="stat-value">{results.total_words.toLocaleString()}</span>
-            <span className="stat-label">total words</span>
-          </div>
-          <div className="stat">
-            <span className="stat-value">{results.total_unique.toLocaleString()}</span>
-            <span className="stat-label">unique words</span>
-          </div>
-          <div className="stat">
-            <span className="stat-value">{results.scoped_messages.toLocaleString()}</span>
-            <span className="stat-label">messages scoped</span>
-          </div>
-          <div className="stat">
-            <span className="stat-value">{results.words.length.toLocaleString()}</span>
-            <span className="stat-label">rows shown</span>
-          </div>
-        </div>
-      )}
-
-      {/* View Toggle */}
-      {results && (
-        <div className="view-toggle">
-          <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>
-            Table
-          </button>
-          <button className={view === "chart" ? "active" : ""} onClick={() => setView("chart")}>
-            Chart
-          </button>
-        </div>
-      )}
-
-      {/* Table View */}
-      {results && view === "table" && (
+      {view === "table" && (
         <div className="table-wrap">
           <table className="freq-table">
             <thead>
@@ -284,8 +112,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Chart View */}
-      {results && view === "chart" && (
+      {view === "chart" && (
         <div className="chart">
           {topForChart.map((w) => (
             <div key={w.word} className="chart-row">
@@ -299,6 +126,180 @@ export default function App() {
               <span className="chart-value">{w.count.toLocaleString()}</span>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function App() {
+  const [userResults, setUserResults] = useState<AnalyzeResponse | null>(null);
+  const [assistantResults, setAssistantResults] = useState<AnalyzeResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [rawFile, setRawFile] = useState<File | null>(null);
+
+  const [normalize, setNormalize] = useState(true);
+  const [stopWords, setStopWords] = useState(false);
+  const [limit, setLimit] = useState(100);
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const analyzeForSpeaker = useCallback(
+    async (file: File, speaker: string): Promise<AnalyzeResponse> => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("normalize", String(normalize));
+      form.append("stop_words", String(stopWords));
+      form.append("speaker", speaker);
+      form.append("limit", String(limit));
+
+      const res = await fetch("/api/analyze", { method: "POST", body: form });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
+      return res.json();
+    },
+    [normalize, stopWords, limit]
+  );
+
+  const analyze = useCallback(
+    async (file: File) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [user, assistant] = await Promise.all([
+          analyzeForSpeaker(file, "user"),
+          analyzeForSpeaker(file, "assistant"),
+        ]);
+        setUserResults(user);
+        setAssistantResults(assistant);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Unknown error");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [analyzeForSpeaker]
+  );
+
+  const handleFile = useCallback(
+    (file: File) => {
+      setFileName(file.name);
+      setRawFile(file);
+      analyze(file);
+    },
+    [analyze]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropRef.current?.classList.remove("drag-over");
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    },
+    [handleFile]
+  );
+
+  const reanalyze = useCallback(() => {
+    if (rawFile) analyze(rawFile);
+  }, [rawFile, analyze]);
+
+  return (
+    <div className="app">
+      <header className="header">
+        <h1 className="logo">
+          <span className="logo-icon">&lambda;</span> lexis
+        </h1>
+        <span className="tagline">Word frequency analyzer</span>
+      </header>
+
+      <div
+        ref={dropRef}
+        className="dropzone"
+        onDragOver={(e) => {
+          e.preventDefault();
+          dropRef.current?.classList.add("drag-over");
+        }}
+        onDragLeave={() => dropRef.current?.classList.remove("drag-over")}
+        onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+      >
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,.zip,.txt,.md,.log,.csv,.html,.xml,.yaml,.yml,.toml,.rs,.py,.js,.ts,.go,.java,.c,.cpp,.rb,.sh"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+          }}
+        />
+        {fileName ? (
+          <div className="dropzone-loaded">
+            <span className="file-icon">📄</span>
+            <span className="file-name">{fileName}</span>
+            <span className="file-hint">click or drop to replace</span>
+          </div>
+        ) : (
+          <div className="dropzone-empty">
+            <span className="upload-icon">↑</span>
+            <span>Drop a file here (.json, .zip, .txt, .md, etc.) or click to browse</span>
+          </div>
+        )}
+      </div>
+
+      <div className="controls">
+        <div className="control-group">
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={normalize}
+              onChange={(e) => setNormalize(e.target.checked)}
+            />
+            <span className="toggle-text">Normalize</span>
+          </label>
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={stopWords}
+              onChange={(e) => setStopWords(e.target.checked)}
+            />
+            <span className="toggle-text">Filter stop words</span>
+          </label>
+        </div>
+
+        <div className="control-group">
+          <label className="select-label">
+            Limit
+            <input
+              type="number"
+              min={0}
+              value={limit}
+              onChange={(e) => setLimit(parseInt(e.target.value) || 0)}
+              className="limit-input"
+            />
+          </label>
+        </div>
+
+        <button className="btn-analyze" onClick={reanalyze} disabled={!rawFile || loading}>
+          {loading ? "Analyzing..." : "Re-analyze"}
+        </button>
+      </div>
+
+      {error && <div className="error">{error}</div>}
+
+      {(userResults || assistantResults) && (
+        <div className="split-view">
+          {userResults && <ResultsSection title="Your Words" results={userResults} />}
+          {assistantResults && (
+            <ResultsSection title="Claude's Words" results={assistantResults} />
+          )}
         </div>
       )}
     </div>

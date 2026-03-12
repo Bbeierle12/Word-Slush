@@ -15,9 +15,9 @@ enum Speaker {
 }
 
 #[derive(Parser)]
-#[command(name = "lexis", about = "Word frequency counter for Claude conversation exports")]
+#[command(name = "lexis", about = "Word frequency analyzer for text files and conversation exports")]
 struct Args {
-    /// Path to the Claude JSON export file (omit to launch web UI)
+    /// Path to a file to analyze (.json, .zip, .txt, .md, or any text file). Omit to launch web UI.
     file: Option<PathBuf>,
 
     /// Normalize tokens to lowercase (disable with --no-normalize)
